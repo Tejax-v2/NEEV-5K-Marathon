@@ -31,7 +31,7 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS biblist (
             bib_no INTEGER,
-            name TEXT
+            email TEXT PRIMARY KEY
         )
     """)
     conn.commit()
@@ -58,6 +58,7 @@ def register():
     try:
         conn = sqlite3.connect("users.db")
         cursor = conn.cursor()
+        
         rows = cursor.execute("INSERT INTO users (name, email, gender, phone, city, state, country, mode, termsAccepted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (data["name"], data["email"], data["gender"], data["phone"], data["city"], data["state"], data["country"], data["mode"], data["termsAccepted"]))
         conn.commit()
@@ -99,22 +100,36 @@ def get_next_bib_number():
     
 @app.route('/generatebib', methods=['GET'])
 def generate_bib():
-    full_name = request.args.get('full_name')
+    email = request.args.get('email')
     
-    if not full_name:
-        return jsonify({"error": "full_name parameter is required"}), 400
+    if not email:
+        return jsonify({"error": "email parameter is required"}), 400
 
     try:
-        bib_number = get_next_bib_number()
         
         # Insert into database
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
-        cursor.execute(f"INSERT INTO biblist (bib_no, name) VALUES ({bib_number}, '{full_name}')")
-        conn.commit()
+        cursor.execute("SELECT * FROM users WHERE email = ?;", (email,))
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({"error": "User not registered"})
+        else:
+            cursor.execute("SELECT bib_no FROM biblist WHERE email = ?;", (email,))
+            res = cursor.fetchone()
+            if not res:
+                bib_number = get_next_bib_number()
+                cursor.execute(f"INSERT INTO biblist (bib_no, email) VALUES ({bib_number}, '{email}')")
+                conn.commit()
+                cursor.execute("SELECT name FROM users WHERE email = ?;", (email,))
+                req_user = cursor.fetchone()
+                return jsonify({"full_name": req_user[0], "bib_number": bib_number})
+            cursor.execute("SELECT name FROM users WHERE email = ?;", (email,))
+            req_user = cursor.fetchone()
+            return jsonify({"message":"Bib already generated", "full_name": req_user[0], "bib_number": res[0]})
         conn.close()
         
-        return jsonify({"full_name": full_name, "bib_number": bib_number})
+        # return jsonify({"full_name": full_name, "bib_number": bib_number})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
